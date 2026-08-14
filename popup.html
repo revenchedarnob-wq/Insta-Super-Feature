@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insta Super Features</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <main class="glass-container">
+    <header class="header-wrapper">
+      <img src="imgs/icon32.png" alt="Logo" class="header-logo">
+      <div>
+        <h1 class="title">Insta Super Features</h1>
+        <p class="subtitle">Liquid glass Instagram controls</p>
+      </div>
+    </header>
+
+    <button id="startStopButton" class="liquid-button">
+      <span>Start</span>
+      <div class="liquid"></div>
+    </button>
+
+    <section id="downloaderSetupCard" class="setup-card checking">
+      <div class="setup-title-row">
+        <div class="setup-icon">⬇</div>
+        <div class="setup-copy">
+          <div class="setup-heading-line">
+            <strong>Checking Local Downloader…</strong>
+            <div class="setup-heading-actions">
+              <span id="downloaderStatusPill" class="status-chip checking">Checking</span>
+              <button type="button" id="toggleSetupCardButton" class="setup-collapse-btn" aria-label="Minimize setup tray" aria-expanded="true" title="Minimize setup tray">−</button>
+            </div>
+          </div>
+          <p class="setup-status-message">Scanning this browser for the local downloader setup.</p>
+        </div>
+      </div>
+
+      <div class="setup-card-body">
+      <div class="setup-guide">
+        <div class="setup-guide-label">Quick setup</div>
+        <p>Optional but recommended. Browser Quick Save already downloads most media with zero setup — the local helper adds highest-quality videos and full carousels. Choose one method, then reload the extension and tap Check Status.</p>
+      </div>
+
+      <div class="setup-options">
+        <div class="setup-option recommended">
+          <div class="option-topline">
+            <span class="option-badge">Option 1</span>
+            <span class="option-tag">Recommended</span>
+          </div>
+          <div class="option-copy">
+            <strong>Install with EXE</strong>
+            <p>Fastest setup. Download, run, finish setup, then reload.</p>
+          </div>
+          <button type="button" id="downloadInstallerButton">Download Installer</button>
+        </div>
+
+        <div class="setup-option">
+          <div class="option-topline">
+            <span class="option-badge">Option 2</span>
+            <span class="option-tag subtle">Manual</span>
+          </div>
+          <div class="option-copy">
+            <strong>Copy Script for PowerShell</strong>
+            <p>Manual setup. Copy, paste into PowerShell, then press Enter.</p>
+          </div>
+          <button type="button" id="copySetupButton">Copy Script</button>
+        </div>
+      </div>
+
+      <div class="setup-utility-header">After setup</div>
+      <div class="setup-actions utility-actions two">
+        <button type="button" id="checkDownloaderButton">Check Status</button>
+        <button type="button" id="openDownloadFolderButton">Open Folder</button>
+      </div>
+    
+      <div id="manualCookieBox" class="manual-cookie-box hidden">
+        <div class="manual-cookie-title">Advanced: paste manual cookies</div>
+        <textarea id="manualCookieTextarea" spellcheck="false" placeholder="Paste Cookie-Editor JSON, raw Cookie header, or Netscape cookies.txt here"></textarea>
+        <div class="setup-actions two">
+          <button type="button" id="saveManualCookiesButton">Save Pasted Cookies Locally</button>
+          <button type="button" id="clearManualCookiesButton">Clear</button>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <div class="toggles-wrapper popup-scroll">
+      <details class="setting-folder" open>
+        <summary><span>🎬 Core Media</span><em>download, audio, progress</em></summary>
+        <div class="folder-content">
+          <div class="toggle-section"><p>Show Download Button</p><label class="toggle-container"><input type="checkbox" id="showDownloadToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Browser Quick Save</p><label class="toggle-container"><input type="checkbox" id="browserQuickSaveToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Best Quality Mode</p><label class="toggle-container"><input type="checkbox" id="bestQualityToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Video Progress Bar</p><label class="toggle-container"><input type="checkbox" id="progressBarToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Auto Unmute</p><label class="toggle-container"><input type="checkbox" id="autoUnmuteToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Space Pause/Play</p><label class="toggle-container"><input type="checkbox" id="spacePauseToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Enter Love React</p><label class="toggle-container"><input type="checkbox" id="enterLoveToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Auto Start Reels</p><label class="toggle-container"><input type="checkbox" id="autoReelsToggle" checked><span class="toggle-slider"></span></label></div>
+        </div>
+      </details>
+
+      <details class="setting-folder">
+        <summary><span>🧭 Feed & Ads</span><em>scroll, carousel, blocker</em></summary>
+        <div class="folder-content">
+          <div class="toggle-section"><p>Auto Scroll Home Feed</p><label class="toggle-container"><input type="checkbox" id="autoFeedScrollToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Up/Down Feed Navigation</p><label class="toggle-container"><input type="checkbox" id="feedArrowNavigationToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Instagram Sponsor Blocker</p><label class="toggle-container"><input type="checkbox" id="instagramAdBlockerToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Focus Mode</p><label class="toggle-container"><input type="checkbox" id="focusModeToggle"><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Feed Carousel Arrows</p><label class="toggle-container"><input type="checkbox" id="feedCarouselArrowsToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Auto Open Reels Tab</p><label class="toggle-container"><input type="checkbox" id="autoRedirectToggle"><span class="toggle-slider"></span></label></div>
+        </div>
+      </details>
+
+      <details class="setting-folder">
+        <summary><span>⌨ Keyboard & Speed</span><em>shortcuts, seek, playback</em></summary>
+        <div class="folder-content">
+          <div class="toggle-section"><p>Arrow Keys ±3s</p><label class="toggle-container"><input type="checkbox" id="keyboardSeek3Toggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Arrow Keys ±5s</p><label class="toggle-container"><input type="checkbox" id="keyboardSeekToggle"><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Keyboard Control Suite</p><label class="toggle-container"><input type="checkbox" id="keyboardSuiteToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Video Speed Control</p><label class="toggle-container"><input type="checkbox" id="videoSpeedToggle" checked><span class="toggle-slider"></span></label></div>
+          <div class="speed-panel">
+            <p>Playback Speed</p>
+            <div class="speed-buttons">
+              <button type="button" class="speed-btn" data-speed="1">1x</button>
+              <button type="button" class="speed-btn" data-speed="1.25">1.25x</button>
+              <button type="button" class="speed-btn" data-speed="1.5">1.5x</button>
+              <button type="button" class="speed-btn" data-speed="2">2x</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="setting-folder">
+        <summary><span>🛡 Privacy</span><em>story and DM privacy</em></summary>
+        <div class="folder-content">
+          <div class="toggle-section"><p>Anonymous Story Viewer</p><label class="toggle-container"><input type="checkbox" id="anonStoryToggle"><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Hide DM Seen Status</p><label class="toggle-container"><input type="checkbox" id="noSeenToggle"><span class="toggle-slider"></span></label></div>
+          <div class="toggle-section"><p>Stealth Mode (Anti-Detection)</p><label class="toggle-container"><input type="checkbox" id="stealthModeToggle" checked><span class="toggle-slider"></span></label></div>
+        </div>
+      </details>
+
+      <details class="setting-folder">
+        <summary><span>📘 Guide</span><em>buttons and shortcuts</em></summary>
+        <div class="folder-content guide-folder-content">
+          <details class="guide-card">
+            <summary><span>⚡ Feature Guide</span><em>what each main button does</em></summary>
+            <ul class="guide-list">
+              <li><b>Download Button</b><span>Tiny save button on the current Reel, video, or photo.</span></li>
+              <li><b>Browser Quick Save</b><span>Zero-setup downloads through the browser itself. Keeps working even without the local helper.</span></li>
+              <li><b>Best Quality Mode</b><span>Prefers the highest loaded media source.</span></li>
+              <li><b>Progress Bar</b><span>Clean scrub bar for current videos.</span></li>
+              <li><b>Auto Unmute</b><span>Starts videos with sound when possible.</span></li>
+              <li><b>Enter Love React</b><span>Press Enter to like or unlike current media.</span></li>
+              <li><b>Sponsor Blocker</b><span>Hides obvious sponsored posts.</span></li>
+              <li><b>Up/Down Navigation</b><span>On Home feed, Down jumps forward and Up jumps back.</span></li>
+              <li><b>Focus Mode</b><span>Reduces side clutter for a cleaner feed.</span></li>
+            </ul>
+          </details>
+
+          <details class="guide-card">
+            <summary><span>⌨ Keyboard Shortcuts</span><em>quick controls</em></summary>
+            <div class="shortcut-grid">
+              <b>Space</b><span>Pause / play current video</span>
+              <b>Enter</b><span>Like / unlike current video, photo, Reel, or story</span>
+              <b>← / →</b><span>Seek backward / forward 3 seconds by default</span>
+              <b>Ctrl + ← / →</b><span>Previous / next Story</span>
+              <b>M</b><span>Mute / unmute current video</span>
+              <b>D</b><span>Download current media</span>
+              <b>F</b><span>Fullscreen current video</span>
+              <b>P</b><span>Picture-in-picture current video</span>
+              <b>S</b><span>Toggle Reels / feed auto-scroll</span>
+              <b>+ / −</b><span>Playback speed up / down (R resets)</span>
+            </div>
+          </details>
+
+          <details class="guide-card">
+            <summary><span>⬇ Local Downloader Setup</span><em>one-time PowerShell setup</em></summary>
+            <ol class="setup-steps">
+              <li>Expand the Local Downloader card with <b>+</b>.</li>
+              <li>Use <b>Download Installer</b> or <b>Copy Script</b>.</li>
+              <li>Finish setup in PowerShell or the installer.</li>
+              <li>Reload the extension and click <b>Check Status</b>.</li>
+            </ol>
+            <p class="guide-note">Downloads save to the folder chosen during local setup.</p>
+          </details>
+        </div>
+      </details>
+
+      <div class="settings-bottom-actions">
+        <button type="button" id="resetDefaultsButton" class="reset-btn">Reset Recommended Defaults</button>
+      </div>
+
+      <footer class="footer">
+        <p class="credit-text">Made with love 🤍 by <strong>Arnob</strong></p>
+        <a href="https://www.instagram.com/snaz.arnob/" target="_blank" rel="noopener noreferrer" class="footer-btn follow-link">Follow @snaz.arnob</a>
+      </footer>
+    </div>
+  </main>
+</body>
+</html>
+

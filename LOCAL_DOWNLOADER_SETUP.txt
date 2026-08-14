@@ -1,0 +1,22 @@
+Insta Super Features v6 - Local Downloader Setup
+
+Chrome extensions cannot auto-run PowerShell/EXE setup scripts for security.
+The extension popup shows a setup tray so you can install the native helper when you want it.
+
+Good news in v6: the native helper is now OPTIONAL. Browser Quick Save downloads photos and
+videos through the browser itself with zero setup. The helper adds highest-quality videos
+(DASH audio/video merge via yt-dlp + FFmpeg) and full carousel downloads.
+
+How to set up the helper:
+1. Open the extension popup.
+2. Expand the Local Downloader card (+).
+3. Choose Option 1 (Download Installer) or Option 2 (Copy Script for PowerShell).
+4. Run the installer, or paste the script into PowerShell and press Enter.
+5. Reload the extension and click Check Status.
+
+The script installs/updates yt-dlp, tries to find/install FFmpeg, registers the native
+messaging host (com.arnob.insta_downloader), and downloads using highest available quality
+by default: bv*+ba/b with resolution/fps/bitrate sorting.
+
+The extension checks the helper version with semver: only helpers older than 5.18.12 are
+flagged for update. Quick Save keeps working regardless of helper status.

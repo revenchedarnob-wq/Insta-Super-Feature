@@ -1,0 +1,83 @@
+.ig-progressbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    border-radius: 999px;
+    z-index: 99;
+    transition: height 0.15s ease, opacity 0.24s ease;
+    opacity: 0;
+}
+
+.ig-progressbar:hover {
+    height: 2.5px;
+}
+
+.ig-progressbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ffb3c6, #ff8fab);
+    width: 0%;
+    border-radius: 999px;
+    position: relative;
+    pointer-events: none;
+}
+
+.ig-progressbar-handle {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 4px;
+    background: #ffb3c6;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    box-shadow: 0 0 3px rgba(255, 143, 171, 0.75);
+}
+
+.ig-progressbar:hover .ig-progressbar-handle {
+    opacity: 1;
+}
+
+/* ========================================================================= */
+/*  Extraction Failure Alert - Liquid Glass Theme                            */
+/* ========================================================================= */
+
+.isf-extraction-alert {
+    /* Base structure handled inline in JS for dynamic positioning */
+}
+
+.isf-alert-icon {
+    flex-shrink: 0;
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(236, 72, 153, 0.4));
+}
+
+.isf-alert-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.isf-alert-title {
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.2px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.isf-alert-message {
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.3;
+}
+
