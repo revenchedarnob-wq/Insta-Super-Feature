@@ -1,0 +1,80 @@
+{
+  "manifest_version": 3,
+  "name": "Insta Super Features",
+  "version": "6.0.0",
+  "description": "Clean Instagram controls with resilient media sniffing, one-click downloads (native yt-dlp helper + built-in browser Quick Save fallback), safe focus mode, liquid-glass UI, smoother feed navigation, and reliable Anonymous Story Viewer + Hide DM Seen (main-world inject, sendBeacon + WebSocket coverage).",
+  "icons": {
+    "16": "imgs/icon16.png",
+    "32": "imgs/icon32.png",
+    "48": "imgs/icon48.png",
+    "128": "imgs/icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "storage",
+    "activeTab",
+    "tabs",
+    "cookies",
+    "notifications",
+    "clipboardRead"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "anon-bootstrap.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "ig-progressbar.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_icon": "imgs/icon128.png",
+    "default_popup": "popup.html"
+  },
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://*.instagram.com/*",
+    "https://instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "installer/InstaSuperFeatures_Setup.exe"
+      ],
+      "matches": [
+        "https://www.instagram.com/*"
+      ]
+    }
+  ]
+}

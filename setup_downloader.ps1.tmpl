@@ -1,0 +1,748 @@
+# Insta Super Features - Local Downloader Setup
+# How to use: open PowerShell, paste this script, press Enter.
+# This installs the local yt-dlp + FFmpeg helper for this exact Chrome extension.
+# Extension ID: __EXTENSION_ID__
+
+& {
+$ErrorActionPreference = "Stop"
+try {
+$ExtId = "__EXTENSION_ID__"
+
+function Write-Step($msg) { Write-Host "`n[ISF] $msg" -ForegroundColor Cyan }
+function Write-Good($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
+function Write-Warn($msg) { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
+
+function Ensure-Directory($Path, $Label, [switch]$RenameFile) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { throw "$Label path is empty" }
+  if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    if ($RenameFile) {
+      $backup = "$Path.file-backup-$(Get-Date -Format yyyyMMddHHmmss)"
+      Rename-Item -LiteralPath $Path -NewName (Split-Path -Leaf $backup) -Force
+      Write-Warn "$Label path existed as a file. Renamed it to $backup"
+    } else {
+      throw "$Label path exists as a file, not a folder: $Path"
+    }
+  }
+  [System.IO.Directory]::CreateDirectory($Path) | Out-Null
+  if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "$Label folder was not created: $Path" }
+}
+
+function Assert-File($Path, $Label) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "$Label is missing: $Path" }
+}
+
+function Read-RegistryDefault($Path) {
+  $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+  return $item.GetValue("")
+}
+
+
+function Get-InstaSuperFeaturesExtensionIds($FallbackExtId) {
+  $ids = New-Object System.Collections.Generic.List[string]
+  if (-not [string]::IsNullOrWhiteSpace($FallbackExtId) -and $FallbackExtId -ne "__EXTENSION_ID__") {
+    $ids.Add($FallbackExtId)
+  }
+
+  $preferenceFiles = @(
+    (Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data\*\Secure Preferences"),
+    (Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data\*\Preferences"),
+    (Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\User Data\*\Secure Preferences"),
+    (Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\User Data\*\Preferences"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\Edge\User Data\*\Secure Preferences"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\Edge\User Data\*\Preferences")
+  )
+
+  foreach ($pattern in $preferenceFiles) {
+    foreach ($pref in Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue) {
+      try {
+        $json = Get-Content -LiteralPath $pref.FullName -Raw | ConvertFrom-Json
+        $settings = $json.extensions.settings
+        if (-not $settings) { continue }
+        foreach ($entry in $settings.PSObject.Properties) {
+          $id = [string]$entry.Name
+          $value = $entry.Value
+          $path = [string]$value.path
+          $manifestName = [string]$value.manifest.name
+          $isMatch = $manifestName -eq "Insta Super Features"
+
+          if (-not $isMatch -and -not [string]::IsNullOrWhiteSpace($path)) {
+            $candidatePath = $path
+            if (-not [System.IO.Path]::IsPathRooted($candidatePath)) {
+              $candidatePath = Join-Path (Split-Path -Parent $pref.FullName) "Extensions\$candidatePath"
+            }
+            $candidateManifest = Join-Path $candidatePath "manifest.json"
+            if (Test-Path -LiteralPath $candidateManifest -PathType Leaf) {
+              try {
+                $candidate = Get-Content -LiteralPath $candidateManifest -Raw | ConvertFrom-Json
+                $isMatch = [string]$candidate.name -eq "Insta Super Features"
+              } catch {}
+            }
+            if (-not $isMatch -and $path -match "(?i)insta.*smooth|insta.*super|insta_smooth_patch") {
+              $isMatch = $true
+            }
+          }
+
+          if ($isMatch -and $id -match '^[a-p]{32}$' -and -not $ids.Contains($id)) {
+            $ids.Add($id)
+          }
+        }
+      } catch {}
+    }
+  }
+
+  if ($ids.Count -eq 0) { throw "Could not find this extension ID in Chrome profiles. Load the unpacked extension first, then run setup again." }
+  return @($ids.ToArray())
+}
+
+function Convert-AllowedOriginsJson($ExtensionIds) {
+  $origins = @($ExtensionIds | ForEach-Object { "chrome-extension://$_/" })
+  return (($origins | ConvertTo-Json -Compress) -replace ',', ', ')
+}
+
+function Resolve-DownloadDirectory {
+  $fallback = Join-Path $env:USERPROFILE "Downloads\Insta Super Features\Downloaded Media"
+  $configured = [Environment]::GetEnvironmentVariable("ISF_DOWNLOAD_DIR", "User")
+  if ([string]::IsNullOrWhiteSpace($configured)) { $configured = $env:ISF_DOWNLOAD_DIR }
+
+  if (-not [string]::IsNullOrWhiteSpace($configured)) {
+    try {
+      Ensure-Directory $configured "Configured download" -RenameFile
+      return $configured
+    } catch {
+      Write-Warn "Configured download folder unavailable: $($_.Exception.Message)"
+    }
+  }
+
+  Write-Host "`nChoose where Instagram media should be saved." -ForegroundColor Cyan
+  Write-Host "Press Enter for the default folder, or paste any full local folder path you prefer." -ForegroundColor Cyan
+  $choice = Read-Host "Download folder [$fallback]"
+  if ([string]::IsNullOrWhiteSpace($choice)) { $choice = $fallback }
+
+  try {
+    Ensure-Directory $choice "Chosen download" -RenameFile
+    return $choice
+  } catch {
+    Write-Warn "Chosen download folder unavailable: $($_.Exception.Message)"
+    Ensure-Directory $fallback "Fallback download" -RenameFile
+    return $fallback
+  }
+}
+
+$DownloadDir = Resolve-DownloadDirectory
+$HelperDir = Join-Path $env:LOCALAPPDATA "InstaSuperFeatures\native"
+$CookiesFile = Join-Path $HelperDir "cookies.txt"
+$NativeName = "com.arnob.insta_downloader"
+$NativeRegPath = "HKCU:\Software\Google\Chrome\NativeMessagingHosts\$NativeName"
+
+Write-Step "Creating helper folder"
+Ensure-Directory $HelperDir "Native helper" -RenameFile
+Write-Good "Media folder: $DownloadDir"
+Write-Good "Helper folder: $HelperDir"
+
+Write-Step "Checking Python"
+$PythonCmd = $null
+try { py --version | Out-Null; $PythonCmd = "py" } catch {}
+if (-not $PythonCmd) {
+  try { python --version | Out-Null; $PythonCmd = "python" } catch {}
+}
+if (-not $PythonCmd) {
+  Write-Warn "Python not found. Trying to install Python with winget..."
+  winget install --id Python.Python.3.14 -e --source winget --accept-package-agreements --accept-source-agreements
+  try { py --version | Out-Null; $PythonCmd = "py" } catch {}
+  if (-not $PythonCmd) { throw "Python install failed or Python is not in PATH. Install Python manually and rerun this script." }
+}
+Write-Good "Python command: $PythonCmd"
+
+Write-Step "Installing/updating yt-dlp"
+if ($PythonCmd -eq "py") {
+  py -m pip install -U yt-dlp
+} else {
+  python -m pip install -U yt-dlp
+}
+Write-Good "yt-dlp ready"
+
+Write-Step "Checking FFmpeg"
+$FfmpegLocation = ""
+if (Test-Path "C:\ffmpeg\bin\ffmpeg.exe") {
+  $FfmpegLocation = "C:\ffmpeg\bin"
+  Write-Good "FFmpeg found at C:\ffmpeg\bin"
+} else {
+  $ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
+  if ($ff) {
+    $FfmpegLocation = Split-Path $ff.Source -Parent
+    Write-Good "FFmpeg found at $FfmpegLocation"
+  } else {
+    Write-Warn "FFmpeg not found. Trying winget install..."
+    try {
+      winget install --id Gyan.FFmpeg -e --source winget --accept-package-agreements --accept-source-agreements
+    } catch {
+      Write-Warn "Automatic FFmpeg install failed. The helper will still try to use yt-dlp, but merging may fail until FFmpeg is installed."
+    }
+    $ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if ($ff) { $FfmpegLocation = Split-Path $ff.Source -Parent }
+  }
+}
+
+Write-Step "Writing native downloader helper"
+Ensure-Directory $DownloadDir "Download" -RenameFile
+Ensure-Directory $HelperDir "Native helper" -RenameFile
+$DownloaderPy = @"
+import sys, json, struct, subprocess, os, re, glob, time, mimetypes, urllib.request, urllib.parse, html
+
+HELPER_VERSION = "5.18.12"
+
+BASE_DIR = r"$DownloadDir"
+COOKIES = r"$CookiesFile"
+FFMPEG_DIR = r"$FfmpegLocation"
+RUNTIME_COOKIES = os.path.join(os.path.dirname(__file__), "runtime_instagram_cookies.txt")
+LAST_STATUS = os.path.join(os.path.dirname(__file__), "last_download_status.json")
+
+VALID_RE = re.compile(r"^https://(www\.)?instagram\.com/(reel|p|tv|stories)/", re.I)
+
+
+def is_instagram_url(url):
+    return bool(url and VALID_RE.match(str(url)))
+
+
+def read_message():
+    raw_length = sys.stdin.buffer.read(4)
+    if not raw_length:
+        return None
+    message_length = struct.unpack("I", raw_length)[0]
+    message = sys.stdin.buffer.read(message_length).decode("utf-8")
+    return json.loads(message)
+
+
+def send_message(message):
+    encoded = json.dumps(message, ensure_ascii=False).encode("utf-8")
+    sys.stdout.buffer.write(struct.pack("I", len(encoded)))
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+
+def save_last_status(method, ok, auth_methods=None):
+    data = {
+        "lastAuthMethod": method or "unknown",
+        "lastDownloadOk": bool(ok),
+        "authMethodsTried": list(auth_methods or []),
+        "updatedAt": int(time.time())
+    }
+    try:
+        with open(LAST_STATUS, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def read_last_status():
+    try:
+        if os.path.exists(LAST_STATUS):
+            with open(LAST_STATUS, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        pass
+    return {"lastAuthMethod": "none yet", "lastDownloadOk": False, "authMethodsTried": []}
+
+
+def is_direct_media_url(url):
+    try:
+        u = urllib.parse.urlparse(url or "")
+        host = (u.hostname or "").lower()
+        return u.scheme in ("http", "https") and (
+            host.endswith("cdninstagram.com") or
+            host.endswith("fbcdn.net") or
+            "instagram" in host or
+            "fbcdn" in host
+        )
+    except Exception:
+        return False
+
+
+def normalize_cookie_domain(domain):
+    domain = (domain or ".instagram.com").strip()
+    if domain.startswith("#HttpOnly_"):
+        domain = domain[len("#HttpOnly_"):]
+    if not domain:
+        domain = ".instagram.com"
+    return domain
+
+
+def netscape_line(domain, include_subdomains, path, secure, expiry, name, value, httponly=False):
+    domain = normalize_cookie_domain(domain)
+    prefix = "#HttpOnly_" if httponly and not domain.startswith("#HttpOnly_") else ""
+    return "\t".join([
+        prefix + domain,
+        "TRUE" if include_subdomains else "FALSE",
+        path or "/",
+        "TRUE" if secure else "FALSE",
+        str(int(float(expiry or 0))),
+        str(name),
+        str(value)
+    ])
+
+
+def normalize_manual_cookies(text):
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Cookie text is empty")
+
+    # Cookie-Editor JSON export.
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            lines = ["# Netscape HTTP Cookie File", "# Generated by Insta Super Features manual cookie import"]
+            for c in data:
+                if not isinstance(c, dict) or not c.get("name"):
+                    continue
+                domain = c.get("domain") or ".instagram.com"
+                if "instagram.com" not in domain:
+                    continue
+                lines.append(netscape_line(
+                    domain=domain,
+                    include_subdomains=not bool(c.get("hostOnly", False)),
+                    path=c.get("path") or "/",
+                    secure=bool(c.get("secure", True)),
+                    expiry=c.get("expirationDate") or 0,
+                    name=c.get("name"),
+                    value=c.get("value", ""),
+                    httponly=bool(c.get("httpOnly", False))
+                ))
+            out = "\n".join(lines) + "\n"
+            if "\tsessionid\t" not in out:
+                raise ValueError("No sessionid cookie found in JSON export")
+            return out
+    except Exception:
+        pass
+
+    # Netscape cookies.txt export.
+    if "Netscape" in text or "\tsessionid\t" in text or "#HttpOnly_.instagram.com" in text:
+        lines = []
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("#") and not line.startswith("#HttpOnly_") and "\t" not in line:
+                lines.append(line)
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                domain = normalize_cookie_domain(parts[0])
+                if "instagram.com" not in domain:
+                    continue
+                httponly = parts[0].startswith("#HttpOnly_")
+                parts[0] = ("#HttpOnly_" if httponly else "") + domain
+                lines.append("\t".join(parts[:7]))
+        if not lines or not any("\tsessionid\t" in l for l in lines):
+            raise ValueError("No sessionid cookie found in Netscape cookies")
+        if not any("Netscape" in l for l in lines[:3]):
+            lines.insert(0, "# Generated by Insta Super Features manual cookie import")
+            lines.insert(0, "# Netscape HTTP Cookie File")
+        return "\n".join(lines) + "\n"
+
+    # Raw Cookie header: name=value; name2=value2
+    if "sessionid=" in text and ";" in text:
+        lines = ["# Netscape HTTP Cookie File", "# Generated by Insta Super Features manual cookie import"]
+        for part in text.split(";"):
+            if "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            name = name.strip()
+            value = value.strip()
+            if not name:
+                continue
+            expiry = int(time.time() + 60 * 60 * 24 * 365)
+            httponly = name in ("sessionid", "datr", "ig_did", "mid", "rur", "ps_n", "ps_l")
+            lines.append(netscape_line(".instagram.com", True, "/", True, expiry, name, value, httponly=httponly))
+        out = "\n".join(lines) + "\n"
+        if "\tsessionid\t" not in out:
+            raise ValueError("No sessionid cookie found in raw Cookie header")
+        return out
+
+    raise ValueError("Unsupported cookie format. Use Cookie-Editor JSON, raw Cookie header, or Netscape cookies.txt format.")
+
+
+def save_manual_cookies(cookie_text):
+    normalized = normalize_manual_cookies(cookie_text)
+    with open(COOKIES, "w", encoding="utf-8", newline="\n") as f:
+        f.write(normalized)
+    return {
+        "ok": True,
+        "filepath": COOKIES,
+        "hasSessionId": "\tsessionid\t" in normalized,
+        "cookieCount": len([l for l in normalized.splitlines() if "\t" in l and not l.startswith("# ")]),
+    }
+
+
+def read_manual_cookies():
+    try:
+        if os.path.exists(COOKIES) and os.path.getsize(COOKIES) > 20:
+            with open(COOKIES, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+    except Exception:
+        return ""
+    return ""
+
+
+def cookie_header_from_netscape(cookies_netscape):
+    if not cookies_netscape:
+        return ""
+    pairs = []
+    seen = set()
+    for line in cookies_netscape.splitlines():
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        name, value = parts[5], parts[6]
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        # Cookie values copied from JSON/raw headers are already URL-encoded when needed.
+        pairs.append(f"{name}={value}")
+    return "; ".join(pairs)
+
+
+def safe_filename(name):
+    name = re.sub(r"[^\w\-. ]+", "_", name or "instagram_media", flags=re.U).strip(" .")
+    return name[:120] or "instagram_media"
+
+
+def guess_ext(url, content_type, media_kind):
+    path = urllib.parse.urlparse(url or "").path.lower()
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext in ("jpg", "jpeg", "png", "webp", "mp4", "m4v", "mov"):
+        return "jpg" if ext == "jpeg" else ext
+    if content_type:
+        ct = content_type.split(";")[0].strip().lower()
+        mapped = mimetypes.guess_extension(ct) or ""
+        mapped = mapped.lstrip(".").lower()
+        if mapped == "jpe":
+            mapped = "jpg"
+        if mapped:
+            return mapped
+    return "mp4" if media_kind == "video" else "jpg"
+
+
+def unique_path(base, ext):
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(BASE_DIR, f"{base}_{ts}.{ext}")
+    i = 2
+    while os.path.exists(path):
+        path = os.path.join(BASE_DIR, f"{base}_{ts}_{i}.{ext}")
+        i += 1
+    return path
+
+
+def open_download_folder():
+    try:
+        os.makedirs(BASE_DIR, exist_ok=True)
+        if hasattr(os, "startfile"):
+            os.startfile(BASE_DIR)
+        else:
+            subprocess.Popen(["explorer", BASE_DIR])
+        return {"ok": True, "folder": BASE_DIR, "message": "Opened download folder"}
+    except Exception as e:
+        return {"ok": False, "folder": BASE_DIR, "error": f"Could not open download folder: {e}"}
+
+
+def download_direct_media(direct_url, cookies_netscape=None, media_kind="media"):
+    if not is_direct_media_url(direct_url):
+        return {"ok": False, "error": "No usable direct media URL was available from the page"}
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Referer": "https://www.instagram.com/",
+        "Accept": "*/*",
+    }
+    cookie_header = cookie_header_from_netscape(cookies_netscape)
+    if cookie_header:
+        headers["Cookie"] = cookie_header
+
+    req = urllib.request.Request(direct_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            content_type = r.headers.get("Content-Type", "")
+            ext = guess_ext(direct_url, content_type, media_kind)
+            base = "instagram_photo" if media_kind == "photo" else "instagram_video" if media_kind == "video" else "instagram_media"
+            out = unique_path(base, ext)
+            with open(out, "wb") as f:
+                while True:
+                    chunk = r.read(1024 * 512)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+
+        return {
+            "ok": True,
+            "message": "Downloaded currently loaded highest page media",
+            "folder": BASE_DIR,
+            "filepath": out,
+            "files": [out],
+            "usedAuth": "direct page media + extension cookies"
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Direct media download failed: {e}"}
+
+
+def output_template():
+    # Include id to avoid overwriting carousel items with similar titles.
+    return os.path.join(BASE_DIR, "%(uploader)s - %(title).80s - %(id)s.%(ext)s")
+
+
+def base_cmd(url):
+    # Highest available media exposed to yt-dlp:
+    # - No re-encoding.
+    # - Video: best exposed video + best exposed audio, falling back to best single file.
+    # - Photo/carousel: original/highest image media exposed by Instagram/yt-dlp.
+    cmd = [
+        "yt-dlp",
+        "--yes-playlist",
+        "-f", "bv*+ba/b",
+        "-S", "res,fps,br",
+        "--format-sort-force",
+        "--merge-output-format", "mp4",
+        "--no-mtime",
+        "--restrict-filenames",
+        "--no-warnings",
+        "--extractor-args", "instagram:api_hostname=i.instagram.com",
+        "--add-header", "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "--add-header", "Referer:https://www.instagram.com/",
+        "--print", "after_move:filepath",
+        "-o", output_template(),
+        url
+    ]
+    ffmpeg_location = FFMPEG_DIR if FFMPEG_DIR and os.path.exists(os.path.join(FFMPEG_DIR, "ffmpeg.exe")) else None
+    if ffmpeg_location:
+        cmd[1:1] = ["--ffmpeg-location", ffmpeg_location]
+    return cmd
+
+
+def run_cmd(cmd):
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+def cookies_have_sessionid(cookies_netscape):
+    return bool(cookies_netscape and re.search(r"\tsessionid\t[^\s]+", cookies_netscape))
+
+def write_runtime_cookies(cookies_netscape):
+    if not cookies_netscape or "Netscape" not in cookies_netscape:
+        return None
+    if "instagram.com" not in cookies_netscape:
+        return None
+    with open(RUNTIME_COOKIES, "w", encoding="utf-8", newline="\n") as f:
+        f.write(cookies_netscape)
+    return RUNTIME_COOKIES
+
+
+def parse_saved_files(output):
+    files = []
+    for line in (output or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.search(r'Merging formats into "([^"]+)"', line)
+        if m:
+            files.append(m.group(1)); continue
+        m = re.search(r'\[download\] Destination: (.+)$', line)
+        if m:
+            files.append(m.group(1).strip().strip('"')); continue
+        m = re.search(r'(.+\.(?:mp4|m4v|mov|jpg|jpeg|png|webp))$', line, re.I)
+        if m and (os.path.isabs(m.group(1)) or BASE_DIR.lower() in m.group(1).lower()):
+            files.append(m.group(1).strip().strip('"'))
+    # yt-dlp may only print final paths because of --print after_move:filepath
+    for line in (output or "").splitlines():
+        line = line.strip().strip('"')
+        if line.lower().startswith(BASE_DIR.lower()) and line not in files:
+            files.append(line)
+    # de-dupe while keeping order; prefer final media files, not temporary fdash fragments
+    clean = []
+    seen = set()
+    for f in files:
+        if ".fdash-" in f:
+            continue
+        key = f.lower()
+        if key not in seen:
+            seen.add(key); clean.append(f)
+    if clean:
+        return clean
+    # fallback: newest files touched recently
+    now = time.time()
+    candidates = []
+    for pattern in ("*.mp4", "*.m4v", "*.mov", "*.jpg", "*.jpeg", "*.png", "*.webp"):
+        candidates.extend(glob.glob(os.path.join(BASE_DIR, pattern)))
+    candidates = [f for f in candidates if now - os.path.getmtime(f) < 180]
+    candidates.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    return candidates[:5]
+
+
+def download(url, cookies_netscape=None, direct_media_url=None, media_kind=None):
+    if not is_instagram_url(url):
+        # If we have a loaded CDN media URL, allow direct saving even when post URL is unavailable.
+        if direct_media_url:
+            return download_direct_media(direct_media_url, cookies_netscape, media_kind or "media")
+        return {"ok": False, "error": "Invalid Instagram Reel/Post/Story URL"}
+
+    attempts = []
+    manual_cookies = read_manual_cookies()
+    runtime_cookie_file = write_runtime_cookies(cookies_netscape)
+
+    # Manual cookies are intentionally first when present because the user may import fresh Cookie-Editor cookies.
+    if os.path.exists(COOKIES) and os.path.getsize(COOKIES) > 20:
+        attempts.append(("manual cookies.txt", ["--cookies", COOKIES]))
+    if runtime_cookie_file and os.path.exists(runtime_cookie_file):
+        attempts.append(("extension cookies", ["--cookies", runtime_cookie_file]))
+    attempts.append(("chrome browser cookies", ["--cookies-from-browser", "chrome"]))
+
+    last = None
+    used_runtime_cookies = bool(runtime_cookie_file and os.path.exists(runtime_cookie_file))
+
+    direct_cookie_source = cookies_netscape or manual_cookies
+    attempted_auth_names = [name for name, _args in attempts]
+
+    for auth_name, auth_args in attempts:
+        cmd = base_cmd(url)
+        cmd[1:1] = auth_args
+        p = run_cmd(cmd)
+        output = (p.stdout or "") + "\n" + (p.stderr or "")
+        if p.returncode == 0:
+            files = parse_saved_files(output)
+            save_last_status(auth_name, True, attempted_auth_names)
+            return {
+                "ok": True,
+                "message": "Download completed in highest available media quality",
+                "folder": BASE_DIR,
+                "filepath": files[0] if files else BASE_DIR,
+                "files": files,
+                "usedAuth": auth_name,
+                "lastAuthMethod": auth_name,
+                "authMethodsTried": attempted_auth_names,
+                "output": output[-3000:]
+            }
+        last = output[-3000:]
+
+    # Practical fallback: if Instagram API refuses access but the browser already loaded the media,
+    # save that loaded media URL directly. This does not bypass private/follow restrictions; it only
+    # saves media your logged-in browser has already received.
+    if direct_media_url:
+        direct_fallback = download_direct_media(direct_media_url, direct_cookie_source, media_kind or "media")
+        if direct_fallback.get("ok"):
+            save_last_status("direct media fallback", True, attempted_auth_names)
+            direct_fallback["ytDlpError"] = last
+            direct_fallback["lastAuthMethod"] = "direct media fallback"
+            direct_fallback["authMethodsTried"] = attempted_auth_names
+            return direct_fallback
+
+    raw_error = last or "Download failed"
+    login_patterns = ("login", "cookie", "cookies", "not logged in", "requested content is not available", "private", "403", "401")
+    if any(p in raw_error.lower() for p in login_patterns):
+        error = "Instagram rejected the request. Cookies were missing, expired, or not from the same logged-in account."
+    else:
+        error = raw_error
+    if not used_runtime_cookies and not manual_cookies:
+        error += " Extension cookies were not received by the native helper; reload the extension and run Check Again while logged into Instagram."
+    save_last_status("failed", False, attempted_auth_names)
+    return {"ok": False, "error": error, "lastAuthMethod": "failed", "authMethodsTried": attempted_auth_names, "ytDlpError": raw_error[-3000:]}
+
+try:
+    msg = read_message()
+    if not msg:
+        send_message({"ok": False, "error": "No message received"})
+    elif msg.get("type") == "ping":
+        received_cookies = msg.get("cookiesNetscape", "")
+        manual_cookies = read_manual_cookies()
+        last_status = read_last_status()
+        send_message({
+            "ok": True,
+            "installed": True,
+            "helperVersion": HELPER_VERSION,
+            "message": "Native downloader connected",
+            "folder": BASE_DIR,
+            "ffmpeg": FFMPEG_DIR or "PATH/auto",
+            "receivedExtensionCookies": bool(received_cookies),
+            "runtimeExtensionSessionId": cookies_have_sessionid(received_cookies),
+            "receivedSessionId": cookies_have_sessionid(received_cookies),
+            "manualCookiesPath": COOKIES,
+            "cookiesPath": COOKIES,
+            "helperFolder": os.path.dirname(__file__),
+            "downloadFolder": BASE_DIR,
+            "lastAuthMethod": last_status.get("lastAuthMethod", "none yet"),
+            "lastDownloadOk": bool(last_status.get("lastDownloadOk", False)),
+            "authMethodsTried": last_status.get("authMethodsTried", []),
+            "manualCookiesInstalled": bool(manual_cookies),
+            "manualSessionId": cookies_have_sessionid(manual_cookies)
+        })
+    elif msg.get("type") == "saveCookies":
+        send_message(save_manual_cookies(msg.get("cookieText", "")))
+    elif msg.get("type") == "openFolder":
+        send_message(open_download_folder())
+    else:
+        send_message(download(msg.get("url", ""), msg.get("cookiesNetscape", ""), msg.get("directMediaUrl", ""), msg.get("mediaKind", "")))
+except Exception as e:
+    send_message({"ok": False, "error": str(e)})
+"@
+$DownloaderPath = Join-Path $HelperDir "downloader.py"
+Set-Content -LiteralPath $DownloaderPath -Value $DownloaderPy -Encoding UTF8 -Force
+Assert-File $DownloaderPath "downloader.py"
+
+$RunBat = @"
+@echo off
+$PythonCmd "$DownloaderPath"
+"@
+$RunBatPath = Join-Path $HelperDir "run_downloader.bat"
+Set-Content -LiteralPath $RunBatPath -Value $RunBat -Encoding ASCII -Force
+Assert-File $RunBatPath "run_downloader.bat"
+
+$ExtensionIds = Get-InstaSuperFeaturesExtensionIds $ExtId
+$AllowedOriginsJson = Convert-AllowedOriginsJson $ExtensionIds
+Write-Good "Allowed extension IDs: $($ExtensionIds -join ', ')"
+
+$NativeJson = @"
+{
+  "name": "$NativeName",
+  "description": "Insta Super Features Native Downloader",
+  "path": "$($HelperDir.Replace('\','\\'))\\run_downloader.bat",
+  "type": "stdio",
+  "allowed_origins": $AllowedOriginsJson
+}
+"@
+$NativeJsonPath = Join-Path $HelperDir "native-host.json"
+Set-Content -LiteralPath $NativeJsonPath -Value $NativeJson -Encoding ASCII -Force
+Assert-File $NativeJsonPath "native-host.json"
+
+Write-Step "Registering Chrome native messaging host"
+reg add "HKCU\Software\Google\Chrome\NativeMessagingHosts\$NativeName" /ve /t REG_SZ /d "$NativeJsonPath" /f | Out-Null
+
+Write-Step "Validating native downloader install"
+Assert-File $DownloaderPath "downloader.py"
+Assert-File $RunBatPath "run_downloader.bat"
+Assert-File $NativeJsonPath "native-host.json"
+$regValue = Read-RegistryDefault $NativeRegPath
+if ($regValue -ne $NativeJsonPath) { throw "Registry path mismatch. Expected $NativeJsonPath but found $regValue" }
+$nativeHostManifest = Get-Content -LiteralPath $NativeJsonPath -Raw | ConvertFrom-Json
+if ($nativeHostManifest.path -ne $RunBatPath) { throw "native-host.json path mismatch. Expected $RunBatPath but found $($nativeHostManifest.path)" }
+$registeredOrigins = @($nativeHostManifest.allowed_origins)
+foreach ($id in $ExtensionIds) {
+  $origin = "chrome-extension://$id/"
+  if ($registeredOrigins -notcontains $origin) { throw "native-host.json missing allowed origin: $origin" }
+}
+$batText = Get-Content -LiteralPath $RunBatPath -Raw
+if ($batText -notlike "*$DownloaderPath*") { throw "run_downloader.bat does not point to downloader.py: $DownloaderPath" }
+Write-Good "Native downloader installed"
+
+Write-Host "`nDone. Restart Chrome or reload the extension, then press Check Again in the popup." -ForegroundColor Green
+Write-Host "Photos/videos will save to: $DownloadDir" -ForegroundColor Green
+Write-Host "Helper files installed to: $HelperDir" -ForegroundColor Green
+Write-Host "Cookies file: $CookiesFile" -ForegroundColor Green
+Read-Host "Press Enter to close"
+} catch {
+  Write-Host "`n[ERROR] $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "Native downloader setup failed before completion. No success message was printed." -ForegroundColor Red
+  Read-Host "Press Enter to close"
+  return
+}
+}
+
+
